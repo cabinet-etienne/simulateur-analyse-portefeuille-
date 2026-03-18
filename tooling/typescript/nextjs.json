@@ -1,0 +1,10 @@
+{
+  "extends": "./react.json",
+  "compilerOptions": {
+    "plugins": [{ "name": "next" }],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowJs": true,
+    "noEmit": true
+  }
+}

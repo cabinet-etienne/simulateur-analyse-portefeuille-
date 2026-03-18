@@ -1,0 +1,383 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Utilisateurs ───────────────────────────────────────────────────
+
+enum UserRole {
+  ADMIN
+  ANALYST
+  VIEWER
+}
+
+model User {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String   @unique @db.VarChar(255)
+  name      String   @db.VarChar(255)
+  password  String   @db.VarChar(255)
+  role      UserRole @default(ANALYST)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  products      Product[]
+  portfolios    Portfolio[]
+  sharedReports SharedReport[]
+  auditLogs     DataAuditLog[] @relation("ChangedBy")
+
+  @@map("users")
+}
+
+// ─── Produits ───────────────────────────────────────────────────────
+
+enum AssetClass {
+  ETF
+  BOND
+  STRUCTURED
+  SCPI
+  PRIVATE_EQUITY
+}
+
+enum ProductStatus {
+  DRAFT
+  VALIDATED
+  ARCHIVED
+}
+
+enum Currency {
+  EUR
+  USD
+  GBP
+  CHF
+}
+
+model Product {
+  id          String        @id @default(uuid()) @db.Uuid
+  type        AssetClass
+  name        String        @db.VarChar(255)
+  isin        String?       @db.VarChar(12)
+  currency    Currency      @default(EUR)
+  status      ProductStatus @default(DRAFT)
+  dataSources Json          @default("{}") @map("data_sources") @db.JsonB
+  tags        String[]      @default([])
+  createdBy   String        @map("created_by") @db.Uuid
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+
+  creator     User                   @relation(fields: [createdBy], references: [id])
+  allocations PortfolioAllocation[]
+  etfData     EtfData?
+  bondData    BondData?
+  structured  StructuredProductData?
+  scpiData    ScpiData?
+  auditLogs   DataAuditLog[]
+
+  @@index([type])
+  @@index([status])
+  @@index([isin])
+  @@map("products")
+}
+
+// ─── ETF ────────────────────────────────────────────────────────────
+
+enum ReplicationMethod {
+  PHYSICAL
+  SYNTHETIC
+  SAMPLING
+}
+
+enum DistributionPolicy {
+  CAPITALIZING
+  DISTRIBUTING
+}
+
+model EtfData {
+  productId          String             @id @map("product_id") @db.Uuid
+  indexTracked        String             @map("index_tracked") @db.VarChar(255)
+  replicationMethod   ReplicationMethod  @map("replication_method")
+  ter                Decimal            @db.Decimal(5, 4)
+  aum                Decimal            @db.Decimal(15, 2)
+  distributionPolicy DistributionPolicy @map("distribution_policy")
+  domicile           String             @db.VarChar(50)
+  inceptionDate      DateTime           @map("inception_date") @db.Date
+  trackingError      Decimal?           @map("tracking_error") @db.Decimal(5, 4)
+  volatility1y       Decimal?           @map("volatility_1y") @db.Decimal(5, 4)
+  volatility3y       Decimal?           @map("volatility_3y") @db.Decimal(5, 4)
+  returnYtd          Decimal?           @map("return_ytd") @db.Decimal(6, 4)
+  return1y           Decimal?           @map("return_1y") @db.Decimal(6, 4)
+  return3y           Decimal?           @map("return_3y") @db.Decimal(6, 4)
+  return5y           Decimal?           @map("return_5y") @db.Decimal(6, 4)
+  sharpeRatio        Decimal?           @map("sharpe_ratio") @db.Decimal(5, 3)
+  sectorExposure     Json               @default("{}") @map("sector_exposure") @db.JsonB
+  geoExposure        Json               @default("{}") @map("geo_exposure") @db.JsonB
+  topHoldings        Json               @default("[]") @map("top_holdings") @db.JsonB
+  peaEligible        Boolean            @default(false) @map("pea_eligible")
+  sriLabel           String?            @map("sri_label") @db.VarChar(50)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("etf_data")
+}
+
+// ─── Obligations ────────────────────────────────────────────────────
+
+enum IssuerType {
+  SOVEREIGN
+  CORPORATE
+  FINANCIAL
+  SUPRANATIONAL
+}
+
+enum CouponFrequency {
+  ANNUAL
+  SEMI_ANNUAL
+  QUARTERLY
+  ZERO_COUPON
+}
+
+enum CreditRatingAgency {
+  SP
+  MOODYS
+  FITCH
+}
+
+enum BondSeniority {
+  SENIOR
+  SUBORDINATED
+  HYBRID
+}
+
+model BondData {
+  productId        String              @id @map("product_id") @db.Uuid
+  issuer           String              @db.VarChar(255)
+  issuerType       IssuerType          @map("issuer_type")
+  couponRate       Decimal             @map("coupon_rate") @db.Decimal(6, 4)
+  couponFrequency  CouponFrequency     @map("coupon_frequency")
+  maturityDate     DateTime            @map("maturity_date") @db.Date
+  issueDate        DateTime            @map("issue_date") @db.Date
+  nominalValue     Decimal             @map("nominal_value") @db.Decimal(15, 2)
+  purchasePrice    Decimal             @map("purchase_price") @db.Decimal(8, 4)
+  currentPrice     Decimal             @map("current_price") @db.Decimal(8, 4)
+  ytm              Decimal?            @db.Decimal(6, 4)
+  duration         Decimal?            @db.Decimal(6, 3)
+  modifiedDuration Decimal?            @map("modified_duration") @db.Decimal(6, 3)
+  convexity        Decimal?            @db.Decimal(8, 3)
+  creditRating     String              @map("credit_rating") @db.VarChar(10)
+  ratingAgency     CreditRatingAgency  @map("rating_agency")
+  seniority        BondSeniority
+  callable         Boolean             @default(false)
+  callDate         DateTime?           @map("call_date") @db.Date
+  callPrice        Decimal?            @map("call_price") @db.Decimal(8, 4)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("bond_data")
+}
+
+// ─── Produits Structurés ────────────────────────────────────────────
+
+enum UnderlyingType {
+  INDEX
+  STOCK
+  BASKET
+  RATE
+  FUND
+}
+
+enum StructuredSubtype {
+  AUTOCALL
+  PHOENIX
+  REVERSE_CONVERTIBLE
+  CAPITAL_PROTECTED
+  OTHER
+}
+
+enum BarrierType {
+  EUROPEAN
+  AMERICAN
+  DAILY_CLOSE
+}
+
+enum CouponType {
+  GUARANTEED
+  CONDITIONAL
+  MEMORY
+}
+
+enum ObservationFrequency {
+  QUARTERLY
+  SEMI_ANNUAL
+  ANNUAL
+}
+
+model StructuredProductData {
+  productId           String                @id @map("product_id") @db.Uuid
+  issuer              String                @db.VarChar(255)
+  underlying          String                @db.VarChar(255)
+  underlyingType      UnderlyingType        @map("underlying_type")
+  productSubtype      StructuredSubtype     @map("product_subtype")
+  strikeDate          DateTime              @map("strike_date") @db.Date
+  maturityDate        DateTime              @map("maturity_date") @db.Date
+  capitalProtection   Decimal               @map("capital_protection") @db.Decimal(5, 4)
+  barrierLevel        Decimal               @map("barrier_level") @db.Decimal(6, 4)
+  barrierType         BarrierType           @map("barrier_type")
+  couponRate          Decimal               @map("coupon_rate") @db.Decimal(6, 4)
+  couponType          CouponType            @map("coupon_type")
+  couponTriggerLevel  Decimal               @map("coupon_trigger_level") @db.Decimal(6, 4)
+  autocallTriggerLevel Decimal?             @map("autocall_trigger_level") @db.Decimal(6, 4)
+  autocallFrequency   ObservationFrequency? @map("autocall_frequency")
+  observationDates    Json                  @default("[]") @map("observation_dates") @db.JsonB
+  feesEntry           Decimal               @map("fees_entry") @db.Decimal(5, 4)
+  feesOngoing         Decimal               @map("fees_ongoing") @db.Decimal(5, 4)
+  payoffDescription   String                @map("payoff_description") @db.Text
+  scenarios           Json                  @default("{}") @db.JsonB
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("structured_product_data")
+}
+
+// ─── SCPI ───────────────────────────────────────────────────────────
+
+enum ScpiType {
+  YIELD
+  FISCAL
+  VALORISATION
+  DIVERSIFIED
+}
+
+enum CapitalType {
+  FIXED
+  VARIABLE
+}
+
+model ScpiData {
+  productId              String      @id @map("product_id") @db.Uuid
+  managementCompany      String      @map("management_company") @db.VarChar(255)
+  scpiType               ScpiType    @map("scpi_type")
+  capitalType            CapitalType @map("capital_type")
+  sharePrice             Decimal     @map("share_price") @db.Decimal(10, 2)
+  subscriptionFee        Decimal     @map("subscription_fee") @db.Decimal(5, 4)
+  managementFee          Decimal     @map("management_fee") @db.Decimal(5, 4)
+  withdrawalFee          Decimal?    @map("withdrawal_fee") @db.Decimal(5, 4)
+  distributionRate       Decimal     @map("distribution_rate") @db.Decimal(5, 4)
+  revaluationRate        Decimal     @map("revaluation_rate") @db.Decimal(6, 4)
+  occupancyRate          Decimal     @map("occupancy_rate") @db.Decimal(5, 4)
+  capitalization         Decimal     @db.Decimal(15, 2)
+  totalArea              Decimal     @map("total_area") @db.Decimal(12, 2)
+  nbProperties           Int         @map("nb_properties")
+  nbTenants              Int         @map("nb_tenants")
+  debtRatio              Decimal     @map("debt_ratio") @db.Decimal(5, 4)
+  sectorAllocation       Json        @default("{}") @map("sector_allocation") @db.JsonB
+  geoAllocation          Json        @default("{}") @map("geo_allocation") @db.JsonB
+  historicalReturns      Json        @default("[]") @map("historical_returns") @db.JsonB
+  minimumSubscription    Decimal     @map("minimum_subscription") @db.Decimal(10, 2)
+  dismembermentAvailable Boolean     @default(false) @map("dismemberment_available")
+  lifeInsuranceEligible  Boolean     @default(false) @map("life_insurance_eligible")
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("scpi_data")
+}
+
+// ─── Portefeuilles ──────────────────────────────────────────────────
+
+enum RiskProfile {
+  PRUDENT
+  EQUILIBRE
+  DYNAMIQUE
+  OFFENSIF
+}
+
+enum PortfolioStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+model Portfolio {
+  id                    String          @id @default(uuid()) @db.Uuid
+  name                  String          @db.VarChar(255)
+  clientName            String          @map("client_name") @db.VarChar(255)
+  riskProfile           RiskProfile     @map("risk_profile")
+  investmentHorizonMonths Int           @map("investment_horizon_months")
+  objectives            String[]        @default([])
+  constraints           Json            @default("{}") @db.JsonB
+  status                PortfolioStatus @default(DRAFT)
+  createdBy             String          @map("created_by") @db.Uuid
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+
+  creator       User                  @relation(fields: [createdBy], references: [id])
+  allocations   PortfolioAllocation[]
+  sharedReports SharedReport[]
+
+  @@index([status])
+  @@map("portfolios")
+}
+
+model PortfolioAllocation {
+  id          String   @id @default(uuid()) @db.Uuid
+  portfolioId String   @map("portfolio_id") @db.Uuid
+  productId   String   @map("product_id") @db.Uuid
+  weight      Decimal  @db.Decimal(5, 4)
+  amount      Decimal  @db.Decimal(15, 2)
+  rationale   String   @default("") @db.Text
+  addedAt     DateTime @default(now()) @map("added_at")
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  product   Product   @relation(fields: [productId], references: [id])
+
+  @@unique([portfolioId, productId])
+  @@map("portfolio_allocations")
+}
+
+// ─── Partage ────────────────────────────────────────────────────────
+
+model SharedReport {
+  id            String   @id @default(uuid()) @db.Uuid
+  portfolioId   String   @map("portfolio_id") @db.Uuid
+  token         String   @unique @db.VarChar(64)
+  expiresAt     DateTime @map("expires_at")
+  createdBy     String   @map("created_by") @db.Uuid
+  accessedCount Int      @default(0) @map("accessed_count")
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  creator   User      @relation(fields: [createdBy], references: [id])
+
+  @@index([token])
+  @@map("shared_reports")
+}
+
+// ─── Audit / Historisation ──────────────────────────────────────────
+
+enum DataSourceType {
+  MANUAL
+  IMPORT
+  COMPUTED
+  ADMIN
+}
+
+model DataAuditLog {
+  id         String         @id @default(uuid()) @db.Uuid
+  entityType String         @map("entity_type") @db.VarChar(50)
+  entityId   String         @map("entity_id") @db.Uuid
+  field      String         @db.VarChar(100)
+  oldValue   Json?          @map("old_value") @db.JsonB
+  newValue   Json?          @map("new_value") @db.JsonB
+  source     DataSourceType
+  changedBy  String         @map("changed_by") @db.Uuid
+  changedAt  DateTime       @default(now()) @map("changed_at")
+
+  product Product? @relation(fields: [entityId], references: [id], onDelete: SetNull)
+  user    User     @relation("ChangedBy", fields: [changedBy], references: [id])
+
+  @@index([entityType, entityId])
+  @@index([changedAt])
+  @@map("data_audit_log")
+}

@@ -1,0 +1,66 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --brand-900: 16 42 67;
+    --brand-700: 51 78 104;
+    --brand-500: 98 125 152;
+    --brand-100: 217 226 236;
+    --accent-500: 212 152 28;
+    --surface-0: 255 255 255;
+    --surface-50: 248 249 250;
+    --surface-100: 241 243 245;
+  }
+
+  body {
+    @apply bg-surface-50 text-brand-900 antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Typographie premium */
+  h1 {
+    @apply text-2xl font-semibold tracking-tight text-brand-900;
+  }
+
+  h2 {
+    @apply text-xl font-semibold tracking-tight text-brand-800;
+  }
+
+  h3 {
+    @apply text-lg font-medium text-brand-700;
+  }
+}
+
+@layer components {
+  /* Card premium */
+  .card {
+    @apply rounded bg-surface-0 p-6 shadow-card;
+  }
+
+  .card-elevated {
+    @apply rounded bg-surface-0 p-6 shadow-elevated;
+  }
+
+  /* Badge de statut */
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+
+  .badge-positive {
+    @apply badge bg-green-50 text-semantic-success;
+  }
+
+  .badge-warning {
+    @apply badge bg-amber-50 text-semantic-warning;
+  }
+
+  .badge-negative {
+    @apply badge bg-red-50 text-semantic-error;
+  }
+
+  .badge-info {
+    @apply badge bg-blue-50 text-semantic-info;
+  }
+}
