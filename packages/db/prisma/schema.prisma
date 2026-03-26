@@ -24,22 +24,47 @@ model User {
   createdAt DateTime @default(now()) @map("created_at")
   updatedAt DateTime @updatedAt @map("updated_at")
 
-  products      Product[]
-  portfolios    Portfolio[]
-  sharedReports SharedReport[]
-  auditLogs     DataAuditLog[] @relation("ChangedBy")
+  products          Product[]
+  portfolios        Portfolio[]
+  portfolioVersions PortfolioVersion[]
+  reports           Report[]
+  auditLogs         DataAuditLog[]     @relation("ChangedBy")
 
   @@map("users")
 }
 
-// ─── Produits ───────────────────────────────────────────────────────
+// ─── Instruments (ex-Produits) ──────────────────────────────────────
 
 enum AssetClass {
   ETF
+  FUND
   BOND
   STRUCTURED
   SCPI
   PRIVATE_EQUITY
+}
+
+enum InstrumentSubType {
+  // Fonds
+  ETF_UCITS
+  OPCVM_SICAV
+  OPCVM_FCP
+  FUND_OTHER
+  // Obligations
+  BOND_SOVEREIGN
+  BOND_CORPORATE
+  BOND_HIGH_YIELD
+  // Structurés
+  STRUCTURED_AUTOCALL
+  STRUCTURED_CAPITAL_PROTECTED
+  STRUCTURED_OTHER
+  // Immobilier
+  SCPI_YIELD
+  SCPI_FISCAL
+  SCPI_DIVERSIFIED
+  // Private Equity
+  PE_FCPR
+  PE_FPCI
 }
 
 enum ProductStatus {
@@ -55,28 +80,39 @@ enum Currency {
   CHF
 }
 
+// Le modèle Product représente un Instrument financier sur le marché.
+// Le nom "Product" est conservé en DB pour la rétrocompatibilité.
 model Product {
-  id          String        @id @default(uuid()) @db.Uuid
+  id          String             @id @default(uuid()) @db.Uuid
   type        AssetClass
-  name        String        @db.VarChar(255)
-  isin        String?       @db.VarChar(12)
-  currency    Currency      @default(EUR)
-  status      ProductStatus @default(DRAFT)
-  dataSources Json          @default("{}") @map("data_sources") @db.JsonB
-  tags        String[]      @default([])
-  createdBy   String        @map("created_by") @db.Uuid
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
+  subType     InstrumentSubType? @map("sub_type")
+  name        String             @db.VarChar(255)
+  isin        String?            @db.VarChar(12)
+  currency    Currency           @default(EUR)
+  status      ProductStatus      @default(DRAFT)
+  dataSources Json               @default("{}") @map("data_sources") @db.JsonB
+  tags        String[]           @default([])
+  createdBy   String             @map("created_by") @db.Uuid
+  createdAt   DateTime           @default(now()) @map("created_at")
+  updatedAt   DateTime           @updatedAt @map("updated_at")
 
-  creator     User                   @relation(fields: [createdBy], references: [id])
+  creator    User                  @relation(fields: [createdBy], references: [id])
+  // Données spécifiques par classe d'actifs
+  etfData    EtfData?
+  fundData   FundData?
+  bondData   BondData?
+  structured StructuredProductData?
+  scpiData   ScpiData?
+  // Relations
+  holdings   Holding[]
+  auditLogs  DataAuditLog[]
+  freshness  DataFreshnessRecord[]
+
+  // Legacy : conservé pour rétrocompatibilité migration
   allocations PortfolioAllocation[]
-  etfData     EtfData?
-  bondData    BondData?
-  structured  StructuredProductData?
-  scpiData    ScpiData?
-  auditLogs   DataAuditLog[]
 
   @@index([type])
+  @@index([subType])
   @@index([status])
   @@index([isin])
   @@map("products")
@@ -121,6 +157,61 @@ model EtfData {
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
   @@map("etf_data")
+}
+
+// ─── Fonds classiques (OPCVM / SICAV / FCP) ────────────────────────
+
+enum FundSubType {
+  OPCVM_SICAV
+  OPCVM_FCP
+  FUND_OTHER
+}
+
+model FundData {
+  productId          String             @id @map("product_id") @db.Uuid
+  fundSubType        FundSubType        @map("fund_sub_type")
+  managementCompany  String             @map("management_company") @db.VarChar(255)
+  fundManager        String?            @map("fund_manager") @db.VarChar(255)
+  category           String             @db.VarChar(255)
+  benchmark          String?            @db.VarChar(255)
+  distributionPolicy DistributionPolicy @map("distribution_policy")
+  domicile           String             @db.VarChar(50)
+  inceptionDate      DateTime           @map("inception_date") @db.Date
+  peaEligible        Boolean            @default(false) @map("pea_eligible")
+  ucitsCompliant     Boolean            @default(true) @map("ucits_compliant")
+  sriLabel           String?            @map("sri_label") @db.VarChar(50)
+  // Coûts
+  ongoingCharges     Decimal            @map("ongoing_charges") @db.Decimal(5, 4)
+  managementFee      Decimal            @map("management_fee") @db.Decimal(5, 4)
+  entryFee           Decimal?           @map("entry_fee") @db.Decimal(5, 4)
+  exitFee            Decimal?           @map("exit_fee") @db.Decimal(5, 4)
+  performanceFee     Decimal?           @map("performance_fee") @db.Decimal(5, 4)
+  // Performance
+  returnYtd          Decimal?           @map("return_ytd") @db.Decimal(6, 4)
+  return1y           Decimal?           @map("return_1y") @db.Decimal(6, 4)
+  return3y           Decimal?           @map("return_3y") @db.Decimal(6, 4)
+  return5y           Decimal?           @map("return_5y") @db.Decimal(6, 4)
+  return1yVsBenchmark Decimal?          @map("return_1y_vs_benchmark") @db.Decimal(6, 4)
+  // Risque
+  volatility1y       Decimal?           @map("volatility_1y") @db.Decimal(5, 4)
+  volatility3y       Decimal?           @map("volatility_3y") @db.Decimal(5, 4)
+  maxDrawdown        Decimal?           @map("max_drawdown") @db.Decimal(6, 4)
+  sharpeRatio        Decimal?           @map("sharpe_ratio") @db.Decimal(5, 3)
+  sortinoRatio       Decimal?           @map("sortino_ratio") @db.Decimal(5, 3)
+  beta               Decimal?           @db.Decimal(5, 3)
+  // Taille
+  aum                Decimal            @db.Decimal(15, 2)
+  // Expositions
+  sectorExposure     Json               @default("{}") @map("sector_exposure") @db.JsonB
+  geoExposure        Json               @default("{}") @map("geo_exposure") @db.JsonB
+  topHoldings        Json               @default("[]") @map("top_holdings") @db.JsonB
+  // Notation
+  morningstarRating  Int?               @map("morningstar_rating") @db.SmallInt
+  morningstarCategory String?           @map("morningstar_category") @db.VarChar(255)
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@map("fund_data")
 }
 
 // ─── Obligations ────────────────────────────────────────────────────
@@ -215,26 +306,26 @@ enum ObservationFrequency {
 }
 
 model StructuredProductData {
-  productId           String                @id @map("product_id") @db.Uuid
-  issuer              String                @db.VarChar(255)
-  underlying          String                @db.VarChar(255)
-  underlyingType      UnderlyingType        @map("underlying_type")
-  productSubtype      StructuredSubtype     @map("product_subtype")
-  strikeDate          DateTime              @map("strike_date") @db.Date
-  maturityDate        DateTime              @map("maturity_date") @db.Date
-  capitalProtection   Decimal               @map("capital_protection") @db.Decimal(5, 4)
-  barrierLevel        Decimal               @map("barrier_level") @db.Decimal(6, 4)
-  barrierType         BarrierType           @map("barrier_type")
-  couponRate          Decimal               @map("coupon_rate") @db.Decimal(6, 4)
-  couponType          CouponType            @map("coupon_type")
-  couponTriggerLevel  Decimal               @map("coupon_trigger_level") @db.Decimal(6, 4)
-  autocallTriggerLevel Decimal?             @map("autocall_trigger_level") @db.Decimal(6, 4)
-  autocallFrequency   ObservationFrequency? @map("autocall_frequency")
-  observationDates    Json                  @default("[]") @map("observation_dates") @db.JsonB
-  feesEntry           Decimal               @map("fees_entry") @db.Decimal(5, 4)
-  feesOngoing         Decimal               @map("fees_ongoing") @db.Decimal(5, 4)
-  payoffDescription   String                @map("payoff_description") @db.Text
-  scenarios           Json                  @default("{}") @db.JsonB
+  productId            String                @id @map("product_id") @db.Uuid
+  issuer               String                @db.VarChar(255)
+  underlying           String                @db.VarChar(255)
+  underlyingType       UnderlyingType        @map("underlying_type")
+  productSubtype       StructuredSubtype     @map("product_subtype")
+  strikeDate           DateTime              @map("strike_date") @db.Date
+  maturityDate         DateTime              @map("maturity_date") @db.Date
+  capitalProtection    Decimal               @map("capital_protection") @db.Decimal(5, 4)
+  barrierLevel         Decimal               @map("barrier_level") @db.Decimal(6, 4)
+  barrierType          BarrierType           @map("barrier_type")
+  couponRate           Decimal               @map("coupon_rate") @db.Decimal(6, 4)
+  couponType           CouponType            @map("coupon_type")
+  couponTriggerLevel   Decimal               @map("coupon_trigger_level") @db.Decimal(6, 4)
+  autocallTriggerLevel Decimal?              @map("autocall_trigger_level") @db.Decimal(6, 4)
+  autocallFrequency    ObservationFrequency? @map("autocall_frequency")
+  observationDates     Json                  @default("[]") @map("observation_dates") @db.JsonB
+  feesEntry            Decimal               @map("fees_entry") @db.Decimal(5, 4)
+  feesOngoing          Decimal               @map("fees_ongoing") @db.Decimal(5, 4)
+  payoffDescription    String                @map("payoff_description") @db.Text
+  scenarios            Json                  @default("{}") @db.JsonB
 
   product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
 
@@ -284,6 +375,61 @@ model ScpiData {
   @@map("scpi_data")
 }
 
+// ─── Supports de détention (Wrappers) ──────────────────────────────
+
+enum WrapperType {
+  CTO
+  PEA
+  PEA_PME
+  ASSURANCE_VIE
+  PER
+  PER_INDIVIDUEL
+  PER_ENTREPRISE
+}
+
+model Wrapper {
+  id                  String      @id @default(uuid()) @db.Uuid
+  type                WrapperType
+  label               String      @db.VarChar(255)
+  provider            String      @db.VarChar(255)
+  accountNumber       String?     @map("account_number") @db.VarChar(100)
+  maxInvestment       Decimal?    @map("max_investment") @db.Decimal(15, 2)
+  eligibleAssetClasses String[]   @default([]) @map("eligible_asset_classes")
+  createdAt           DateTime    @default(now()) @map("created_at")
+  updatedAt           DateTime    @updatedAt @map("updated_at")
+  archivedAt          DateTime?   @map("archived_at")
+
+  contracts Contract[]
+  holdings  Holding[]
+
+  @@index([type])
+  @@map("wrappers")
+}
+
+// ─── Contrats ──────────────────────────────────────────────────────
+
+model Contract {
+  id                  String   @id @default(uuid()) @db.Uuid
+  wrapperId           String   @map("wrapper_id") @db.Uuid
+  provider            String   @db.VarChar(255)
+  contractName        String   @map("contract_name") @db.VarChar(255)
+  contractNumber      String?  @map("contract_number") @db.VarChar(100)
+  managementFeePercent Decimal @map("management_fee_percent") @db.Decimal(5, 4)
+  entryFeePercent     Decimal  @default(0) @map("entry_fee_percent") @db.Decimal(5, 4)
+  arbitrageFeePercent Decimal  @default(0) @map("arbitrage_fee_percent") @db.Decimal(5, 4)
+  minInvestment       Decimal? @map("min_investment") @db.Decimal(15, 2)
+  availableFundsCount Int?     @map("available_funds_count")
+  createdAt           DateTime @default(now()) @map("created_at")
+  updatedAt           DateTime @updatedAt @map("updated_at")
+  archivedAt          DateTime? @map("archived_at")
+
+  wrapper  Wrapper   @relation(fields: [wrapperId], references: [id], onDelete: Cascade)
+  holdings Holding[]
+
+  @@index([wrapperId])
+  @@map("contracts")
+}
+
 // ─── Portefeuilles ──────────────────────────────────────────────────
 
 enum RiskProfile {
@@ -300,25 +446,183 @@ enum PortfolioStatus {
 }
 
 model Portfolio {
-  id                    String          @id @default(uuid()) @db.Uuid
-  name                  String          @db.VarChar(255)
-  clientName            String          @map("client_name") @db.VarChar(255)
-  riskProfile           RiskProfile     @map("risk_profile")
-  investmentHorizonMonths Int           @map("investment_horizon_months")
-  objectives            String[]        @default([])
-  constraints           Json            @default("{}") @db.JsonB
-  status                PortfolioStatus @default(DRAFT)
-  createdBy             String          @map("created_by") @db.Uuid
-  createdAt             DateTime        @default(now()) @map("created_at")
-  updatedAt             DateTime        @updatedAt @map("updated_at")
+  id                     String          @id @default(uuid()) @db.Uuid
+  name                   String          @db.VarChar(255)
+  clientName             String          @map("client_name") @db.VarChar(255)
+  riskProfile            RiskProfile     @map("risk_profile")
+  investmentHorizonMonths Int            @map("investment_horizon_months")
+  objectives             String[]        @default([])
+  constraints            Json            @default("{}") @db.JsonB
+  status                 PortfolioStatus @default(DRAFT)
+  createdBy              String          @map("created_by") @db.Uuid
+  createdAt              DateTime        @default(now()) @map("created_at")
+  updatedAt              DateTime        @updatedAt @map("updated_at")
 
-  creator       User                  @relation(fields: [createdBy], references: [id])
+  creator    User                  @relation(fields: [createdBy], references: [id])
+  versions   PortfolioVersion[]
+
+  // Legacy : conservé pour rétrocompatibilité migration
   allocations   PortfolioAllocation[]
   sharedReports SharedReport[]
 
   @@index([status])
   @@map("portfolios")
 }
+
+// ─── Versions de portefeuille ──────────────────────────────────────
+
+enum VersionType {
+  CURRENT
+  TARGET
+  SCENARIO
+}
+
+model PortfolioVersion {
+  id          String      @id @default(uuid()) @db.Uuid
+  portfolioId String      @map("portfolio_id") @db.Uuid
+  versionType VersionType @map("version_type")
+  label       String      @db.VarChar(255)
+  totalAmount Decimal     @map("total_amount") @db.Decimal(15, 2)
+  isActive    Boolean     @default(true) @map("is_active")
+  createdBy   String      @map("created_by") @db.Uuid
+  createdAt   DateTime    @default(now()) @map("created_at")
+  updatedAt   DateTime    @updatedAt @map("updated_at")
+  archivedAt  DateTime?   @map("archived_at")
+
+  portfolio    Portfolio      @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
+  creator      User           @relation(fields: [createdBy], references: [id])
+  holdings     Holding[]
+  scenarioSets ScenarioSet[]
+  reports      Report[]
+
+  @@index([portfolioId, versionType])
+  @@index([portfolioId, isActive])
+  @@map("portfolio_versions")
+}
+
+// ─── Positions (Holdings) ──────────────────────────────────────────
+
+enum HoldingSource {
+  MANUAL
+  IMPORT
+  COMPUTED
+}
+
+model Holding {
+  id           String        @id @default(uuid()) @db.Uuid
+  versionId    String        @map("version_id") @db.Uuid
+  instrumentId String        @map("instrument_id") @db.Uuid
+  wrapperId    String?       @map("wrapper_id") @db.Uuid
+  contractId   String?       @map("contract_id") @db.Uuid
+  // Position
+  quantity     Decimal?      @db.Decimal(15, 6)
+  unitPrice    Decimal?      @map("unit_price") @db.Decimal(15, 4)
+  amount       Decimal       @db.Decimal(15, 2)
+  weight       Decimal       @db.Decimal(5, 4)
+  // Contexte
+  rationale    String        @default("") @db.Text
+  entryDate    DateTime?     @map("entry_date") @db.Date
+  source       HoldingSource @default(MANUAL)
+  // Méta
+  addedAt      DateTime      @default(now()) @map("added_at")
+  updatedAt    DateTime      @updatedAt @map("updated_at")
+
+  version    PortfolioVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  instrument Product          @relation(fields: [instrumentId], references: [id])
+  wrapper    Wrapper?         @relation(fields: [wrapperId], references: [id])
+  contract   Contract?        @relation(fields: [contractId], references: [id])
+
+  @@unique([versionId, instrumentId, wrapperId])
+  @@index([versionId])
+  @@index([instrumentId])
+  @@map("holdings")
+}
+
+// ─── Scénarios ─────────────────────────────────────────────────────
+
+model ScenarioSet {
+  id                 String   @id @default(uuid()) @db.Uuid
+  portfolioVersionId String   @map("portfolio_version_id") @db.Uuid
+  name               String   @db.VarChar(255)
+  description        String   @default("") @db.Text
+  scenarios          Json     @default("[]") @db.JsonB
+  results            Json?    @db.JsonB
+  createdBy          String   @map("created_by") @db.Uuid
+  createdAt          DateTime @default(now()) @map("created_at")
+
+  portfolioVersion PortfolioVersion @relation(fields: [portfolioVersionId], references: [id], onDelete: Cascade)
+
+  @@index([portfolioVersionId])
+  @@map("scenario_sets")
+}
+
+// ─── Rapports ──────────────────────────────────────────────────────
+
+enum ReportStatus {
+  DRAFT
+  GENERATED
+  SHARED
+  EXPIRED
+}
+
+model Report {
+  id                 String       @id @default(uuid()) @db.Uuid
+  portfolioVersionId String       @map("portfolio_version_id") @db.Uuid
+  title              String       @db.VarChar(255)
+  status             ReportStatus @default(DRAFT)
+  generatedAt        DateTime?    @map("generated_at")
+  snapshotData       Json?        @map("snapshot_data") @db.JsonB
+  pdfUrl             String?      @map("pdf_url") @db.VarChar(500)
+  // Partage
+  shareToken         String?      @unique @map("share_token") @db.VarChar(64)
+  shareExpiresAt     DateTime?    @map("share_expires_at")
+  accessedCount      Int          @default(0) @map("accessed_count")
+  // Branding
+  cabinetName        String       @map("cabinet_name") @db.VarChar(255)
+  logoUrl            String?      @map("logo_url") @db.VarChar(500)
+  // Méta
+  createdBy          String       @map("created_by") @db.Uuid
+  createdAt          DateTime     @default(now()) @map("created_at")
+  updatedAt          DateTime     @updatedAt @map("updated_at")
+
+  portfolioVersion PortfolioVersion @relation(fields: [portfolioVersionId], references: [id], onDelete: Cascade)
+  creator          User             @relation(fields: [createdBy], references: [id])
+
+  @@index([shareToken])
+  @@index([portfolioVersionId])
+  @@map("reports")
+}
+
+// ─── Fraîcheur des données ─────────────────────────────────────────
+
+enum DataConfidence {
+  HIGH
+  MEDIUM
+  LOW
+  STALE
+}
+
+model DataFreshnessRecord {
+  id           String         @id @default(uuid()) @db.Uuid
+  entityType   String         @map("entity_type") @db.VarChar(50)
+  entityId     String         @map("entity_id") @db.Uuid
+  field        String         @db.VarChar(100)
+  source       DataSourceType
+  sourceDetail String?        @map("source_detail") @db.VarChar(255)
+  confidence   DataConfidence @default(HIGH)
+  fetchedAt    DateTime       @map("fetched_at")
+  validUntil   DateTime?      @map("valid_until")
+  updatedBy    String         @map("updated_by") @db.Uuid
+
+  product Product? @relation(fields: [entityId], references: [id], onDelete: Cascade)
+
+  @@unique([entityType, entityId, field])
+  @@index([entityId])
+  @@index([confidence])
+  @@map("data_freshness")
+}
+
+// ─── Legacy : PortfolioAllocation (conservé pour migration) ────────
 
 model PortfolioAllocation {
   id          String   @id @default(uuid()) @db.Uuid
@@ -336,7 +640,7 @@ model PortfolioAllocation {
   @@map("portfolio_allocations")
 }
 
-// ─── Partage ────────────────────────────────────────────────────────
+// ─── Legacy : SharedReport (conservé pour migration) ───────────────
 
 model SharedReport {
   id            String   @id @default(uuid()) @db.Uuid
@@ -348,7 +652,6 @@ model SharedReport {
   createdAt     DateTime @default(now()) @map("created_at")
 
   portfolio Portfolio @relation(fields: [portfolioId], references: [id], onDelete: Cascade)
-  creator   User      @relation(fields: [createdBy], references: [id])
 
   @@index([token])
   @@map("shared_reports")

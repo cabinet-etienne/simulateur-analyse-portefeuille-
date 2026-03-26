@@ -8,6 +8,7 @@ const adapter = new EtfAdapter();
 const mockProduct: Product = {
   id: "test-etf-001",
   type: "ETF",
+  subType: "ETF_UCITS",
   name: "Test MSCI World ETF",
   isin: "IE00B4L5Y983",
   currency: "EUR",
@@ -22,20 +23,30 @@ const mockProduct: Product = {
 const mockData: EtfData = {
   productId: "test-etf-001",
   indexTracked: "MSCI World",
+  provider: "iShares",
+  ticker: "IWDA",
   replicationMethod: "PHYSICAL",
   ter: 0.002,
+  transactionCost: null,
+  spreadEstimate: null,
   aum: 500_000_000,
+  avgDailyVolume: null,
   distributionPolicy: "CAPITALIZING",
   domicile: "Ireland",
   inceptionDate: new Date("2009-09-25"),
   trackingError: 0.003,
+  trackingDifference: null,
   volatility1y: 0.15,
   volatility3y: 0.14,
+  maxDrawdown: null,
   returnYtd: 0.08,
   return1y: 0.12,
   return3y: 0.32,
   return5y: 0.55,
+  return1yVsIndex: null,
   sharpeRatio: 0.85,
+  sortinoRatio: null,
+  beta: null,
   sectorExposure: { technology: 0.22, financials: 0.15, healthcare: 0.12 },
   geoExposure: { "united-states": 0.65, japan: 0.06, "united-kingdom": 0.04 },
   topHoldings: [
@@ -43,6 +54,7 @@ const mockData: EtfData = {
     { name: "Microsoft", weight: 0.04 },
   ],
   peaEligible: false,
+  ucitsCompliant: true,
   sriLabel: null,
 };
 
@@ -52,25 +64,13 @@ describe("EtfAdapter", () => {
   });
 
   describe("analyze", () => {
-    it("retourne un résultat structuré", () => {
+    it("retourne un résultat structuré avec scoring", () => {
       const result = adapter.analyze(mockProduct, mockData);
 
       expect(result.productId).toBe("test-etf-001");
-      expect(result.totalCost).toBe(0.002);
-    });
-
-    it("évalue correctement la tracking quality", () => {
-      const result = adapter.analyze(mockProduct, mockData);
-
-      expect(result.trackingQuality).not.toBeNull();
-      expect(result.trackingQuality?.rating).toBe("GOOD");
-    });
-
-    it("évalue correctement la liquidité (AUM 500M)", () => {
-      const result = adapter.analyze(mockProduct, mockData);
-
-      // 500M → score 4
-      expect(result.liquidityScore).toBe(4);
+      expect(result.scoring).toBeDefined();
+      expect(result.scoring.globalScore).toBeGreaterThan(0);
+      expect(result.scoring.scores.costs).toBeGreaterThan(0);
     });
 
     it("gère les données manquantes sans crash", () => {
@@ -82,8 +82,9 @@ describe("EtfAdapter", () => {
       };
       const result = adapter.analyze(mockProduct, partialData);
 
-      expect(result.trackingQuality).toBeNull();
-      expect(result.riskMetrics).toBeNull();
+      expect(result.productId).toBe("test-etf-001");
+      expect(result.scoring.scores.tracking).toBeNull();
+      expect(result.scoring.scores.risk).toBeNull();
     });
   });
 

@@ -1,16 +1,20 @@
 {
   "name": "@repo/core-domain",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./validations": "./src/validations/index.ts"
   },
   "scripts": {
     "build": "tsc",
     "lint": "eslint src/",
     "test": "vitest run",
     "test:watch": "vitest"
+  },
+  "dependencies": {
+    "zod": "^3.23.0"
   },
   "devDependencies": {
     "@repo/typescript-config": "workspace:*",

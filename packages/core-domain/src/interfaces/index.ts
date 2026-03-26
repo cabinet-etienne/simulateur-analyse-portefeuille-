@@ -2,6 +2,7 @@ import type { AssetClass } from "../enums";
 import type { Product } from "../models/base";
 import type { BondAnalysisResult, BondData } from "../models/bond";
 import type { EtfAnalysisResult, EtfData } from "../models/etf";
+import type { FundAnalysisResult, FundData } from "../models/fund";
 import type { PortfolioAnalysisResult } from "../models/portfolio";
 import type { ScpiAnalysisResult, ScpiData } from "../models/scpi";
 import type { StructuredAnalysisResult, StructuredProductData } from "../models/structured";
@@ -52,7 +53,7 @@ export interface CommentaryEngine {
 export interface CommentaryContext {
   assetClass: AssetClass;
   product: Product;
-  analysisResult: EtfAnalysisResult | BondAnalysisResult | StructuredAnalysisResult | ScpiAnalysisResult;
+  analysisResult: EtfAnalysisResult | FundAnalysisResult | BondAnalysisResult | StructuredAnalysisResult | ScpiAnalysisResult;
 }
 
 export interface CommentaryResult {
@@ -69,11 +70,14 @@ export interface Comment {
 
 // ─── Contrat pour le moteur de consolidation ────────────────────────
 
+/** Données spécifiques à un instrument, union de tous les types possibles */
+export type InstrumentData = EtfData | FundData | BondData | StructuredProductData | ScpiData;
+
 export interface PortfolioEngine {
   consolidate(
     allocations: Array<{
       product: Product;
-      data: EtfData | BondData | StructuredProductData | ScpiData;
+      data: InstrumentData;
       weight: number;
       amount: number;
     }>,
@@ -97,7 +101,7 @@ export interface ReportData {
   analysis: PortfolioAnalysisResult;
   products: Array<{
     product: Product;
-    analysis: EtfAnalysisResult | BondAnalysisResult | StructuredAnalysisResult | ScpiAnalysisResult;
+    analysis: EtfAnalysisResult | FundAnalysisResult | BondAnalysisResult | StructuredAnalysisResult | ScpiAnalysisResult;
   }>;
   branding: {
     cabinetName: string;

@@ -2,6 +2,7 @@ import type {
   AssetClass,
   BondData,
   EtfData,
+  FundData,
   LiquidityAnalysis,
   PortfolioAnalysisResult,
   PortfolioCostAnalysis,
@@ -13,7 +14,7 @@ import type {
 import { computeAllocation } from "../allocation/compute-allocation";
 import { analyzeConcentration } from "../analysis/concentration";
 
-type ProductData = EtfData | BondData | StructuredProductData | ScpiData;
+type ProductData = EtfData | FundData | BondData | StructuredProductData | ScpiData;
 
 interface ConsolidationInput {
   product: Product;
@@ -109,6 +110,7 @@ function analyzeLiquidity(inputs: ConsolidationInput[]): LiquidityAnalysis {
   for (const input of inputs) {
     switch (input.product.type) {
       case "ETF":
+      case "FUND":
       case "BOND":
         liquidShare += input.weight;
         break;
@@ -138,24 +140,28 @@ function analyzeLiquidity(inputs: ConsolidationInput[]): LiquidityAnalysis {
 
 function getGeoExposure(type: AssetClass, data: ProductData): Record<string, number> {
   if (type === "ETF") return (data as EtfData).geoExposure;
+  if (type === "FUND") return (data as FundData).geoExposure;
   if (type === "SCPI") return (data as ScpiData).geoAllocation;
   return {};
 }
 
 function getSectorExposure(type: AssetClass, data: ProductData): Record<string, number> {
   if (type === "ETF") return (data as EtfData).sectorExposure;
+  if (type === "FUND") return (data as FundData).sectorExposure;
   if (type === "SCPI") return (data as ScpiData).sectorAllocation;
   return {};
 }
 
 function getAnnualCost(type: AssetClass, data: ProductData): number {
   if (type === "ETF") return Number((data as EtfData).ter);
+  if (type === "FUND") return Number((data as FundData).ongoingCharges);
   if (type === "SCPI") return Number((data as ScpiData).managementFee);
   if (type === "STRUCTURED") return Number((data as StructuredProductData).feesOngoing);
   return 0;
 }
 
 function getEntryCost(type: AssetClass, data: ProductData): number {
+  if (type === "FUND") return Number((data as FundData).entryFee ?? 0);
   if (type === "SCPI") return Number((data as ScpiData).subscriptionFee);
   if (type === "STRUCTURED") return Number((data as StructuredProductData).feesEntry);
   return 0;

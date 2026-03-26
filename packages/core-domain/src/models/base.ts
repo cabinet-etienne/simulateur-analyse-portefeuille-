@@ -2,6 +2,7 @@ import type {
   AssetClass,
   Currency,
   DataSource,
+  InstrumentSubType,
   ProductStatus,
   PortfolioStatus,
   RiskProfile,
@@ -18,9 +19,20 @@ export interface User {
   createdAt: Date;
 }
 
+/**
+ * Instrument financier — un produit disponible sur le marché.
+ *
+ * Le type `Product` est conservé comme alias pour compatibilité,
+ * mais le concept métier est désormais "Instrument".
+ *
+ * `subType` affine la classification au sein d'une AssetClass :
+ * - AssetClass "ETF" → subType "ETF_UCITS"
+ * - AssetClass "FUND" → subType "OPCVM_SICAV" | "OPCVM_FCP" | "FUND_OTHER"
+ */
 export interface Product {
   id: string;
   type: AssetClass;
+  subType: InstrumentSubType | null; // null = pas encore classifié (rétrocompat)
   name: string;
   isin: string | null;
   currency: Currency;
@@ -31,6 +43,9 @@ export interface Product {
   dataSources: Record<string, FieldSource>;
   tags: string[];
 }
+
+/** Alias sémantique — Instrument = Product dans le modèle de données */
+export type Instrument = Product;
 
 export interface FieldSource {
   source: DataSource;
